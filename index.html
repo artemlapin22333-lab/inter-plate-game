@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Winter Plate Simulator</title>
+<script src="https://telegram.org"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; }
+  body { background: radial-gradient(circle at top, #0d1b33 0%, #060b16 100%); color: #f0f6fc; min-height: 100vh; overflow-x: hidden; display: flex; flex-direction: column; }
+  canvas#snow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+  .app { position: relative; z-index: 1; max-width: 440px; width: 100%; margin: 0 auto; padding: 12px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  
+  .header { display: flex; align-items: center; justify-content: space-between; background: rgba(18, 30, 52, 0.85); border: 1px solid rgba(90, 175, 255, 0.3); border-radius: 14px; padding: 10px 14px; backdrop-filter: blur(8px); }
+  .user-info { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: #8ecae6; }
+  .balance { font-size: 17px; font-weight: 800; color: #52f296; text-shadow: 0 0 10px rgba(82, 242, 150, 0.3); }
+
+  .countries { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .c-btn { background: #16243d; border: 1px solid #263c63; color: #b8d4f0; padding: 8px 4px; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer; transition: 0.2s; }
+  .c-btn.active { background: linear-gradient(135deg, #1e88e5, #00acc1); color: #fff; border-color: #64b5f6; box-shadow: 0 0 12px rgba(30, 136, 229, 0.5); }
+  .plate-wrap { padding: 6px 0; }
+  .plate { position: relative; height: 96px; border-radius: 12px; background: linear-gradient(180deg, #ffffff 0%, #e4e8ee 100%); border: 4px solid #14171c; box-shadow: 0 8px 20px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.8); display: flex; align-items: center; overflow: hidden; }
+  .plate::after { content: ''; position: absolute; inset: 3px; border: 1.5px solid rgba(20, 23, 28, 0.75); border-radius: 7px; pointer-events: none; }
+  .strip { width: 46px; height: 100%; background: #0057b7; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 12px 0 8px; color: #fff; font-weight: 800; font-size: 13px; z-index: 2; }
+  .flag { width: 28px; height: 18px; border: 1px solid rgba(255,255,255,0.85); border-radius: 2px; overflow: hidden; position: relative; }
+  .flag.ua { background: linear-gradient(180deg, #0057b7 50%, #ffd700 50%); }
+  .flag.kz { background: #00afca; display: flex; align-items: center; justify-content: center; }
+  .flag.kz::before { content: ''; position: absolute; left: 2px; top: 2px; bottom: 2px; width: 2.5px; background: #fec50c; }
+  .flag.kz::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #fec50c; margin-left: 3px; }
+  .flag.usa { background: repeating-linear-gradient(180deg, #b22234 0 2.5px, #fff 2.5px 5px); }
+  .flag.usa::before { content: ''; position: absolute; top: 0; left: 0; width: 13px; height: 10px; background: #3c3b6e; }
+  .flag.eu { border: none; background: radial-gradient(circle, transparent 5px, #ffd700 5.5px, #ffd700 7px, transparent 7.5px); }
+  .plate-body { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; height: 100%; }
+  .state-top { position: absolute; top: 6px; font-size: 10px; font-weight: 800; color: #c62828; letter-spacing: 1px; }
+  .plate-num { font-size: 30px; font-weight: 900; color: #111; letter-spacing: 1.5px; text-shadow: 1px 1px 0 rgba(255,255,255,0.8), 0 2px 3px rgba(0,0,0,0.2); }
+  .kz-reg { width: 54px; height: 100%; border-left: 1.5px solid #222; display: flex; align-items: center; justify-content: center; font-size: 23px; font-weight: 900; color: #111; }
+
+  .plate.taxi { background: linear-gradient(180deg, #ffd54f 0%, #ffb300 100%); }
+  .plate.police { background: linear-gradient(180deg, #1565c0 0%, #0d47a1 100%); }
+  .plate.police .plate-num { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+  .plate.military { background: linear-gradient(180deg, #212529 0%, #121417 100%); }
+  .plate.military .strip { background: #2b2d42; }
+  .plate.military .plate-num { color: #f8f9fa; }
+  .plate.usa-style .strip { background: #153285; }
+  .plate.usa-style .plate-num { color: #122666; }
+  .plate.eu-style .strip { background: #003399; }
+  .plate.kz-style .strip { background: #009ec2; }
+
+  .card { background: rgba(18, 30, 52, 0.85); border: 1px solid rgba(90, 175, 255, 0.25); border-radius: 14px; padding: 14px; text-align: center; }
+  .rarity { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  .price { font-size: 24px; font-weight: 900; color: #52f296; margin-bottom: 4px; }
+  .desc { font-size: 13px; color: #b8d4f0; }
+
+  .spin-btn { background: linear-gradient(135deg, #2196f3, #1976d2); border: none; color: #fff; padding: 16px; border-radius: 14px; font-size: 17px; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(33, 150, 243, 0.4); transition: transform 0.1s; }
+  .spin-btn:active { transform: scale(0.97); }
+
+  .nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: auto; }
+  .nav-btn { background: #121e34; border: 1px solid #243b61; color: #90caf9; padding: 10px 4px; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .nav-btn.active { background: #1e3a63; color: #fff; border-color: #4fc3f7; }
+
+  .screen { display: none; flex-direction: column; gap: 10px; }
+  .screen.active { display: flex; }
+  .list-item { display: flex; justify-content: space-between; align-items: center; background: rgba(22, 36, 61, 0.9); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+  .small-btn { background: #2e7d32; border: none; color: #fff; padding: 7px 12px; border-radius: 8px; font-weight: 700; font-size: 12px; cursor: pointer; }
+  .small-btn.blue { background: #1976d2; }
+  .small-btn:disabled { background: #37474f; color: #90a4ae; }
+</style>
+</head>
+<body>
+<canvas id="snow"></canvas>
+<div class="app">
+  <div class="header">
+    <div class="user-info">❄️ <span id="nick">Игрок</span></div>
+    <div class="balance" id="bal">50 000 ₴</div>
+  </div>
+
+  <div id="scr-gen" class="screen active">
+    <div class="countries">
+      <button class="c-btn active" onclick="setCountry('UA', this)">🇺🇦 UA</button>
+      <button class="c-btn" onclick="setCountry('KZ', this)">🇰🇿 KZ</button>
+      <button class="c-btn" onclick="setCountry('USA', this)">🇺🇸 USA</button>
+      <button class="c-btn" onclick="setCountry('EU', this)">🇪🇺 EU</button>
+    </div>
+
+    <div class="plate-wrap">
+      <div class="plate" id="plate-box">
+        <div class="strip">
+          <div class="flag ua" id="flag-box"></div>
+          <span id="strip-code">UA</span>
+        </div>
+        <div class="plate-body">
+          <div class="state-top" id="state-top"></div>
+          <div class="plate-num" id="plate-num">AA 7777 AA</div>
+        </div>
+        <div class="kz-reg" id="kz-reg" style="display:none;">01</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="rarity" id="rarity" style="color:#64b5f6;">WINTER EDITION</div>
+      <div class="price" id="price">0 ₴</div>
+      <div class="desc" id="desc">Нажми кнопку ниже, чтобы выбить номер!</div>
+    </div>
+
+    <button class="spin-btn" id="spin-btn" onclick="spinPlate()">ВЫБИТЬ НОМЕР (-1 500 ₴)</button>
+  </div>
+
+  <div id="scr-garage" class="screen">
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <span id="garage-cap" style="font-weight:700;">Гараж: 0 / 15</span>
+      <button class="small-btn" onclick="sellAll()">Продать всё</button>
+    </div>
+    <div id="garage-list" style="display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto;"></div>
+  </div>
+
+  <div id="scr-upg" class="screen">
+    <div class="list-item">
+      <div>
+        <div style="font-weight:700;">Расширить гараж (x2)</div>
+        <div style="font-size:12px; color:#90caf9;" id="cap-desc">Мест: 15 → 30</div>
+      </div>
+      <button class="small-btn blue" id="cap-btn" onclick="buyCap()">4 500 ₴</button>
+    </div>
+    <div class="list-item">
+      <div>
+        <div style="font-weight:700; color:#ffd54f;">🏎 BMW M5 F90 ASKO</div>
+        <div style="font-size:12px; color:#90caf9;" id="bmw-desc">Легендарный седан + статус VIP</div>
+      </div>
+      <button class="small-btn" id="bmw-btn" onclick="buyBmw()">500 000 ₴</button>
+    </div>
+  </div>
+
+  <div id="scr-top" class="screen">
+    <div class="card" style="padding:10px; font-weight:800; color:#ffd54f;">🏆 ОБЩИЙ ОНЛАЙН-РЕЙТИНГ</div>
+    <div id="top-list" style="display:flex; flex-direction:column; gap:6px; max-height:360px; overflow-y:auto;"></div>
+  </div>
+
+  <div class="nav">
+    <button class="nav-btn active" onclick="openTab('gen', this)">🎲 Номера</button>
+    <button class="nav-btn" onclick="openTab('garage', this)">🚘 Гараж</button>
+    <button class="nav-btn" onclick="openTab('upg', this)">⚡ Магазин</button>
+    <button class="nav-btn" onclick="openTab('top', this)">🏆 ТОП</button>
+  </div>
+</div>
+<script>
+const tg = window.Telegram ? window.Telegram.WebApp : null;
+if (tg) { tg.expand(); tg.ready(); }
+
+const FIREBASE_URL = "https://firebaseio.com";
+const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
+
+let state = JSON.parse(localStorage.getItem("wps_tg_save") || "null") || {
+  nick: tgUser ? (tgUser.first_name || tgUser.username || "TG_Player") : "Игрок",
+  bal: 50000,
+  country: "UA",
+  cap: 15,
+  bmw: false,
+  inv: []
+};
+
+const CURR = {
+  UA: { sym: "₴", rate: 1 },
+  KZ: { sym: "тг", rate: 12 },
+  USA: { sym: "$", rate: 0.025 },
+  EU: { sym: "€", rate: 0.023 }
+};
+
+function fmt(val) {
+  const c = CURR[state.country];
+  const v = Math.round(val * c.rate);
+  return v.toLocaleString("ru-RU") + " " + c.sym;
+}
+
+function save() {
+  localStorage.setItem("wps_tg_save", JSON.stringify(state));
+  document.getElementById("nick").innerText = state.nick + (state.bmw ? " [M5]" : "");
+  document.getElementById("bal").innerText = fmt(state.bal);
+  document.getElementById("spin-btn").innerText = `ВЫБИТЬ НОМЕР (-${fmt(1500)})`;
+  syncFirebase();
+}
+
+function setCountry(c, btn) {
+  state.country = c;
+  document.querySelectorAll(".c-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const demos = {
+    UA: { num: "AA 7777 AA", code: "UA", cls: "", flag: "ua", st: "", kz: "" },
+    KZ: { num: "777 AAA", code: "KZ", cls: "kz-style", flag: "kz", st: "", kz: "01" },
+    USA: { num: "7777 VIP", code: "USA", cls: "usa-style", flag: "usa", st: "CALIFORNIA", kz: "" },
+    EU: { num: "DE • 777-VIP", code: "DE", cls: "eu-style", flag: "eu", st: "", kz: "" }
+  };
+  applyPlate(demos[c]);
+  save();
+}
+
+function applyPlate(p) {
+  const box = document.getElementById("plate-box");
+  box.className = "plate " + (p.cls || "");
+  document.getElementById("flag-box").className = "flag " + p.flag;
+  document.getElementById("strip-code").innerText = p.code;
+  document.getElementById("plate-num").innerText = p.num;
+  document.getElementById("state-top").innerText = p.st || "";
+  const kzEl = document.getElementById("kz-reg");
+  if (p.kz) { kzEl.style.display = "flex"; kzEl.innerText = p.kz; }
+  else { kzEl.style.display = "none"; }
+}
+
+function rnd(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function rndDigits(n) { return Array.from({length: n}, () => Math.floor(Math.random()*10)).join(""); }
+
+function spinPlate() {
+  if (state.bal < 1500) { alert("Недостаточно средств! Продай номера в гараже."); return; }
+  state.bal -= 1500;
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
+
+  const c = state.country;
+  let num = "", code = c, flag = c.toLowerCase(), cls = c === "UA" ? "" : c.toLowerCase() + "-style", st = "", kz = "";
+  const letters = "ABCEHIKMOPTX";
+
+  if (c === "UA") {
+    const reg = rnd(["AA", "KA", "BC", "AE", "BH", "AX", "AI"]);
+    const ser = rnd(["AA", "OO", "II", "XX", "MM", "BB", "KO", "BP"]);
+    const d = Math.random() < 0.12 ? rnd(["7777", "0001", "8888", "9999", "0777"]) : rndDigits(4);
+    num = `${reg} ${d} ${ser}`;
+    if (Math.random() < 0.08) { cls = "taxi"; }
+    else if (Math.random() < 0.05) { cls = "police"; num = `${rndDigits(2)} ${d}`; }
+    else if (Math.random() < 0.04) { cls = "military"; }
+  } else if (c === "KZ") {
+    const d = Math.random() < 0.12 ? rnd(["777", "001", "888", "007"]) : rndDigits(3);
+    const s = Math.random() < 0.1 ? rnd(["VIP", "XXX", "AAA", "KZ"]) : rnd(letters)+rnd(letters)+rnd(letters);
+    num = `${d} ${s}`;
+    kz = rnd(["01", "02", "05", "09", "13"]);
+  } else if (c === "USA") {
+    st = rnd(["CALIFORNIA", "NEW YORK", "FLORIDA", "TEXAS", "MIAMI"]);
+    num = Math.random() < 0.15 ? rnd(["BOSS", "ASKO", "M5 F90", "777 VIP", "KING"]) : `${rndDigits(3)} ${rnd(letters)}${rnd(letters)}${rnd(letters)}`;
+  } else {
+    code = rnd(["DE", "PL", "CZ", "IT", "FR", "LT"]);
+    num = `${code} • ${rndDigits(3)}-${rnd(letters)}${rnd(letters)}`;
+  }
+
+  let price = 1200 + Math.floor(Math.random() * 2500);
+  let rarity = "ОБЫЧНЫЙ", rColor = "#cfd8dc", reason = "Стандартная серия";
+  if (/777|000|888|999|001|VIP|BOSS|ASKO|KING/.test(num)) {
+    price = 35000 + Math.floor(Math.random() * 65000);
+    rarity = "🔥 ЛЕГЕНДАРНЫЙ"; rColor = "#ffd54f"; reason = "Блатная комбинация!";
+  } else if (cls === "police" || cls === "military" || /(.)\1/.test(num)) {
+    price = 8000 + Math.floor(Math.random() * 12000);
+    rarity = "💎 РЕДКИЙ"; rColor = "#4fc3f7"; reason = "Красивое сочетание или спецсерия";
+  }
+
+  applyPlate({ num, code, cls, flag, st, kz });
+  document.getElementById("rarity").innerText = rarity;
+  document.getElementById("rarity").style.color = rColor;
+  document.getElementById("price").innerText = "+" + fmt(price);
+  document.getElementById("desc").innerText = reason;
+
+  if (state.inv.length < state.cap) {
+    state.inv.unshift({ num: kz ? `${num} [${kz}]` : num, country: c, price });
+  } else {
+    state.bal += price;
+    document.getElementById("desc").innerText += " (Гараж полон — продано!)";
+  }
+  save();
+}
+function openTab(name, btn) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("scr-" + name).classList.add("active");
+  btn.classList.add("active");
+  if (name === "garage") renderGarage();
+  if (name === "upg") renderUpg();
+  if (name === "top") loadTop();
+}
+
+function renderGarage() {
+  document.getElementById("garage-cap").innerText = `Гараж: ${state.inv.length} / ${state.cap}`;
+  const list = document.getElementById("garage-list");
+  list.innerHTML = state.inv.length ? "" : "<div class='desc' style='text-align:center;padding:20px;'>В гараже пока пусто</div>";
+  state.inv.forEach((item, idx) => {
+    const row = document.createElement("div");
+    row.className = "list-item";
+    row.innerHTML = `<div><b>[${item.country}] ${item.num}</b><div style="font-size:12px;color:#52f296;">${fmt(item.price)}</div></div>
+      <button class="small-btn" onclick="sellOne(${idx})">Продать</button>`;
+    list.appendChild(row);
+  });
+}
+
+function sellOne(idx) {
+  state.bal += state.inv[idx].price;
+  state.inv.splice(idx, 1);
+  save(); renderGarage();
+}
+
+function sellAll() {
+  state.inv.forEach(i => state.bal += i.price);
+  state.inv = [];
+  save(); renderGarage();
+}
+
+function renderUpg() {
+  const capCost = state.cap * 300;
+  document.getElementById("cap-desc").innerText = `Мест: ${state.cap} → ${state.cap * 2}`;
+  document.getElementById("cap-btn").innerText = fmt(capCost);
+  const bmwBtn = document.getElementById("bmw-btn");
+  bmwBtn.innerText = state.bmw ? "КУПЛЕНО" : fmt(500000);
+  bmwBtn.disabled = state.bmw;
+}
+
+function buyCap() {
+  const cost = state.cap * 300;
+  if (state.bal < cost) return alert("Не хватает денег!");
+  state.bal -= cost; state.cap *= 2; save(); renderUpg();
+}
+
+function buyBmw() {
+  if (state.bal < 500000 || state.bmw) return alert("Не хватает денег!");
+  state.bal -= 500000; state.bmw = true; save(); renderUpg();
+}
+
+function syncFirebase() {
+  const key = encodeURIComponent(state.nick);
+  fetch(`${FIREBASE_URL}/leaderboard/${key}.json`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: state.nick, score: Math.round(state.bal) })
+  }).catch(() => {});
+}
+
+async function loadTop() {
+  const list = document.getElementById("top-list");
+  list.innerHTML = "<div class='desc' style='text-align:center;'>Загрузка топа...</div>";
+  try {
+    const res = await fetch(`${FIREBASE_URL}/leaderboard.json`);
+    const data = await res.json() || {};
+    const arr = Object.values(data).sort((a, b) => b.score - a.score).slice(0, 20);
+    list.innerHTML = "";
+    arr.forEach((u, i) => {
+      const row = document.createElement("div");
+      row.className = "list-item";
+      row.innerHTML = `<div><b>#${i+1} ${u.name}</b></div><div style="color:#52f296;font-weight:800;">${fmt(u.score)}</div>`;
+      list.appendChild(row);
+    });
+  } catch (e) {
+    list.innerHTML = "<div class='desc'>Ошибка загрузки рейтинга</div>";
+  }
+}
+
+const canvas = document.getElementById("snow"), ctx = canvas.getContext("2d");
+let W, H, flakes = [];
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+window.addEventListener("resize", resize); resize();
+for (let i = 0; i < 45; i++) flakes.push({ x: Math.random()*W, y: Math.random()*H, r: Math.random()*2.5+1, s: Math.random()*1.2+0.4 });
+function drawSnow() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255,255,255,0.65)";
+  flakes.forEach(f => {
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
+    f.y += f.s; if (f.y > H) { f.y = -5; f.x = Math.random()*W; }
+  });
+  requestAnimationFrame(drawSnow);
+}
+drawSnow();
+save();
+</script>
+</body>
+</html>
